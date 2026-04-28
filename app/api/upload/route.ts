@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       .from("images")
       .getPublicUrl(data.path);
 
-    return NextResponse.json({ url: urlData.publicUrl });
+    return NextResponse.json({ imageUrl: urlData.publicUrl, url: urlData.publicUrl });
   } catch (error) {
     const message = error instanceof Error ? error.message : "アップロードに失敗しました";
     return NextResponse.json({ error: message }, { status: 500 });
