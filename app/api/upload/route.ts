@@ -16,52 +16,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // バリデーション
     if (!ALLOWED_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { error: "JPEG・PNG・WebP のみアップロードできます" },
+        { error: "JPEG、PNG、WebPのみアップロード可能です" },
         { status: 400 }
       );
     }
 
     if (file.size > MAX_SIZE_MB * 1024 * 1024) {
       return NextResponse.json(
-        { error: `ファイルサイズは ${MAX_SIZE_MB}MB 以下にしてください` },
+        { error: `ファイルサイズは${MAX_SIZE_MB}MB以下にしてください` },
         { status: 400 }
       );
     }
 
-    // Supabase Storage にアップロード
-    const ext = file.name.split(".").pop() ?? "jpg";
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const filePath = `uploads/${fileName}`;
+    const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+    const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from("instagram-images")
-      .upload(filePath, buffer, {
+    const { data, error } = await supabaseAdmin.storage
+      .from("images")
+      .upload(fileName, buffer, {
         contentType: file.type,
         upsert: false,
       });
 
-    if (uploadError) {
-      throw new Error(`アップロード失敗: ${uploadError.message}`);
-    }
+    if (error) throw error;
 
-    // 公開URLを取得
     const { data: urlData } = supabaseAdmin.storage
-      .from("instagram-images")
-      .getPublicUrl(filePath);
+      .from("images")
+      .getPublicUrl(data.path);
 
-    return NextResponse.json({
-      success: true,
-      imageUrl: urlData.publicUrl,
-      filePath,
-    });
+    return NextResponse.json({ url: urlData.publicUrl });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "アップロード失敗";
+    const message = error instanceof Error ? error.message : "アップロードに失敗しました";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
