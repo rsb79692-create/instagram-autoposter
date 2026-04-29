@@ -19,44 +19,46 @@ interface PostResult {
 export default function DashboardPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("upload");
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string>("");
-  const [uploadedImageUrl, setUploadedImageUrl] = useState<string>("");
-  const [uploadedFilePath, setUploadedFilePath] = useState<string>("");
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([]);
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
   const [generated, setGenerated] = useState<GeneratedContent | null>(null);
   const [editedCaption, setEditedCaption] = useState("");
   const [editedHashtags, setEditedHashtags] = useState("");
   const [result, setResult] = useState<PostResult | null>(null);
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
 
-  // ログアウト
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
   }
 
-  // ファイル選択処理
-  function handleFileSelect(file: File) {
-    if (!file.type.startsWith("image/")) {
-      setError("画像ファイルを選択してください");
+  function handleFilesSelect(files: File[]) {
+    const validFiles = files.filter(f => f.type.startsWith("image/") && f.size <= 8 * 1024 * 1024);
+    if (validFiles.length === 0) {
+      setError("有効な画像ファイルを選択してください（最大8MB）");
       return;
     }
-    if (file.size > 8 * 1024 * 1024) {
-      setError("ファイルサイズは8MB以下にしてください");
+    if (validFiles.length > 10) {
+      setError("一度に選択できるのは10枚までです");
       return;
     }
     setError("");
-    setImageFile(file);
-    setImagePreviewUrl(URL.createObjectURL(file));
+    setImageFiles(prev => {
+      const newFiles = [...prev, ...validFiles].slice(0, 10);
+      return newFiles;
+    });
+    const newUrls = validFiles.map(f => URL.createObjectURL(f));
+    setImagePreviewUrls(prev => [...prev, ...newUrls].slice(0, 10));
   }
 
-  // ドラッグ&ドロップ
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFileSelect(file);
+    const files = Array.from(e.dataTransfer.files);
+    handleFilesSelect(files);
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -68,32 +70,40 @@ export default function DashboardPage() {
     setIsDragging(false);
   }, []);
 
-  // Step 1: アップロード → AI生成
+  function removeImage(index: number) {
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    setImagePreviewUrls(prev => prev.filter((_, i) => i !== index));
+    if (currentPreviewIndex >= index && currentPreviewIndex > 0) {
+      setCurrentPreviewIndex(prev => prev - 1);
+    }
+  }
+
   async function handleUploadAndGenerate() {
-    if (!imageFile) return;
+    if (imageFiles.length === 0) return;
     setError("");
     setStep("generating");
 
     try {
-      // 1. Supabaseにアップロード
-      const formData = new FormData();
-      formData.append("file", imageFile);
+      // 全画像をアップロード
+      const uploadedUrls: string[] = [];
+      for (const file of imageFiles) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const uploadRes = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) throw new Error(uploadData.error);
+        uploadedUrls.push(uploadData.imageUrl);
+      }
+      setUploadedImageUrls(uploadedUrls);
 
-      const uploadRes = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const uploadData = await uploadRes.json();
-      if (!uploadRes.ok) throw new Error(uploadData.error);
-
-      setUploadedImageUrl(uploadData.imageUrl);
-      setUploadedFilePath(uploadData.filePath);
-
-      // 2. AI生成
+      // 最初の画像でAI生成
       const generateRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: uploadData.imageUrl }),
+        body: JSON.stringify({ imageUrl: uploadedUrls[0] }),
       });
       const generateData = await generateRes.json();
       if (!generateRes.ok) throw new Error(generateData.error);
@@ -108,7 +118,6 @@ export default function DashboardPage() {
     }
   }
 
-  // Step 2: Instagram に投稿
   async function handlePost() {
     setError("");
     setStep("posting");
@@ -123,10 +132,10 @@ export default function DashboardPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageUrl: uploadedImageUrl,
+          imageUrl: uploadedImageUrls[0],
+          imageUrls: uploadedImageUrls,
           caption: editedCaption,
           hashtags,
-          filePath: uploadedFilePath,
         }),
       });
       const data = await res.json();
@@ -140,23 +149,21 @@ export default function DashboardPage() {
     }
   }
 
-  // リセット
   function handleReset() {
     setStep("upload");
-    setImageFile(null);
-    setImagePreviewUrl("");
-    setUploadedImageUrl("");
-    setUploadedFilePath("");
+    setImageFiles([]);
+    setImagePreviewUrls([]);
+    setUploadedImageUrls([]);
     setGenerated(null);
     setEditedCaption("");
     setEditedHashtags("");
     setResult(null);
     setError("");
+    setCurrentPreviewIndex(0);
   }
 
   return (
     <div className={styles.layout}>
-      {/* サイドバー */}
       <aside className={styles.sidebar}>
         <div className={styles.sidebarTop}>
           <div className={styles.brand}>
@@ -174,7 +181,6 @@ export default function DashboardPage() {
             </svg>
             <span className={styles.brandName}>Autoposter</span>
           </div>
-
           <nav className={styles.nav}>
             <div className={`${styles.navItem} ${styles.navActive}`}>
               <span>📸</span> 新規投稿
@@ -192,14 +198,10 @@ export default function DashboardPage() {
             <div className={styles.stepLine} />
             <StepDot num={4} label="投稿完了" active={step === "posting" || step === "done"} done={step === "done"} />
           </div>
-
-          <button onClick={handleLogout} className={styles.logoutBtn}>
-            ログアウト
-          </button>
+          <button onClick={handleLogout} className={styles.logoutBtn}>ログアウト</button>
         </div>
       </aside>
 
-      {/* メインコンテンツ */}
       <main className={styles.main}>
         <div className={styles.header}>
           <h1 className={styles.pageTitle}>
@@ -211,28 +213,23 @@ export default function DashboardPage() {
           </h1>
         </div>
 
-        {error && (
-          <div className={styles.errorBanner}>
-            ⚠ {error}
-          </div>
-        )}
+        {error && <div className={styles.errorBanner}>⚠ {error}</div>}
 
-        {/* STEP: アップロード */}
         {step === "upload" && (
           <div className={styles.section}>
             <div
-              className={`${styles.dropzone} ${isDragging ? styles.dragging : ""} ${imageFile ? styles.hasFile : ""}`}
+              className={`${styles.dropzone} ${isDragging ? styles.dragging : ""} ${imageFiles.length > 0 ? styles.hasFile : ""}`}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onClick={() => document.getElementById("fileInput")?.click()}
             >
-              {imageFile ? (
+              {imageFiles.length > 0 ? (
                 <div className={styles.preview}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={imagePreviewUrl} alt="preview" className={styles.previewImg} />
+                  <img src={imagePreviewUrls[currentPreviewIndex]} alt="preview" className={styles.previewImg} />
                   <div className={styles.previewOverlay}>
-                    <span>クリックで変更</span>
+                    <span>クリックで追加</span>
                   </div>
                 </div>
               ) : (
@@ -243,92 +240,131 @@ export default function DashboardPage() {
                     </svg>
                   </div>
                   <p className={styles.dropText}>ここに写真をドロップ</p>
-                  <p className={styles.dropSub}>または クリックして選択</p>
+                  <p className={styles.dropSub}>または クリックして選択（複数可・最大10枚）</p>
                   <p className={styles.dropNote}>JPEG・PNG・WebP / 最大8MB</p>
                 </div>
               )}
             </div>
 
+            {imageFiles.length > 0 && (
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px" }}>
+                {imagePreviewUrls.map((url, i) => (
+                  <div key={i} style={{ position: "relative", cursor: "pointer" }} onClick={() => setCurrentPreviewIndex(i)}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt={`preview-${i}`}
+                      style={{
+                        width: "70px",
+                        height: "70px",
+                        objectFit: "cover",
+                        borderRadius: "8px",
+                        border: i === currentPreviewIndex ? "2px solid #dc2743" : "2px solid transparent"
+                      }}
+                    />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeImage(i); }}
+                      style={{
+                        position: "absolute",
+                        top: "-6px",
+                        right: "-6px",
+                        background: "#dc2743",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "50%",
+                        width: "20px",
+                        height: "20px",
+                        cursor: "pointer",
+                        fontSize: "12px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center"
+                      }}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <input
               id="fileInput"
               type="file"
               accept="image/jpeg,image/png,image/webp"
+              multiple
               style={{ display: "none" }}
               onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFileSelect(file);
+                const files = Array.from(e.target.files || []);
+                if (files.length > 0) handleFilesSelect(files);
               }}
             />
 
-            {imageFile && (
-              <button
-                className={styles.primaryBtn}
-                onClick={handleUploadAndGenerate}
-              >
+            {imageFiles.length > 0 && (
+              <button className={styles.primaryBtn} onClick={handleUploadAndGenerate}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 2a10 10 0 110 20 10 10 0 010-20z" />
                   <path d="M12 8v4l3 3" />
                 </svg>
-                AIで投稿文を生成する
+                AIで投稿文を生成する（{imageFiles.length}枚）
               </button>
             )}
           </div>
         )}
 
-        {/* STEP: 生成中 */}
         {step === "generating" && (
           <div className={styles.loadingSection}>
             <div className={styles.loadingCard}>
-              {imagePreviewUrl && (
+              {imagePreviewUrls[0] && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={imagePreviewUrl} alt="preview" className={styles.loadingThumb} />
+                <img src={imagePreviewUrls[0]} alt="preview" className={styles.loadingThumb} />
               )}
               <div className={styles.loadingContent}>
                 <div className={styles.loadingSpinner} />
                 <p className={styles.loadingTitle}>AIが画像を解析しています</p>
-                <p className={styles.loadingDesc}>
-                  画像の内容を理解して<br />
-                  最適な投稿文とハッシュタグを生成中...
-                </p>
-                <div className={styles.loadingSteps}>
-                  <LoadingStep text="画像をアップロード中" done />
-                  <LoadingStep text="AIが画像を解析中" active />
-                  <LoadingStep text="投稿文を生成中" />
-                </div>
+                <p className={styles.loadingDesc}>穂乃味らしい投稿文を生成中...</p>
               </div>
             </div>
           </div>
         )}
 
-        {/* STEP: プレビュー・編集 */}
         {step === "preview" && generated && (
           <div className={styles.previewSection}>
             <div className={styles.previewGrid}>
-              {/* 左: 画像 */}
               <div className={styles.previewLeft}>
                 <div className={styles.igFrame}>
                   <div className={styles.igHeader}>
                     <div className={styles.igAvatar} />
                     <div>
-                      <div className={styles.igUsername}>your_account</div>
-                      <div className={styles.igLocation}>Japan</div>
+                      <div className={styles.igUsername}>honomi_kyushoku</div>
+                      <div className={styles.igLocation}>大阪府</div>
                     </div>
                     <span className={styles.igDots}>•••</span>
                   </div>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={imagePreviewUrl} alt="post" className={styles.igImage} />
-                  <div className={styles.igFooter}>
-                    <div className={styles.igActions}>
-                      <span>🤍</span><span>💬</span><span>📤</span>
+                  <img src={imagePreviewUrls[currentPreviewIndex]} alt="post" className={styles.igImage} />
+                  {imagePreviewUrls.length > 1 && (
+                    <div style={{ display: "flex", justifyContent: "center", gap: "4px", padding: "8px" }}>
+                      {imagePreviewUrls.map((_, i) => (
+                        <div
+                          key={i}
+                          onClick={() => setCurrentPreviewIndex(i)}
+                          style={{
+                            width: "6px",
+                            height: "6px",
+                            borderRadius: "50%",
+                            background: i === currentPreviewIndex ? "#dc2743" : "#ccc",
+                            cursor: "pointer"
+                          }}
+                        />
+                      ))}
                     </div>
-                    <p className={styles.igCaption}>
-                      <strong>your_account</strong> {editedCaption}
-                    </p>
+                  )}
+                  <div className={styles.igFooter}>
+                    <div className={styles.igActions}><span>🤍</span><span>💬</span><span>📤</span></div>
+                    <p className={styles.igCaption}><strong>honomi_kyushoku</strong> {editedCaption}</p>
                   </div>
                 </div>
               </div>
 
-              {/* 右: 編集 */}
               <div className={styles.previewRight}>
                 <div className={styles.editSection}>
                   <label className={styles.editLabel}>
@@ -346,39 +382,23 @@ export default function DashboardPage() {
                 <div className={styles.editSection}>
                   <label className={styles.editLabel}>
                     # ハッシュタグ
-                    <span className={styles.editCount}>
-                      {editedHashtags.split(/[\s,]+/).filter(Boolean).length}個
-                    </span>
+                    <span className={styles.editCount}>{editedHashtags.split(/[\s,]+/).filter(Boolean).length}個</span>
                   </label>
                   <textarea
                     className={styles.editTextarea}
                     value={editedHashtags}
                     onChange={(e) => setEditedHashtags(e.target.value)}
                     rows={4}
-                    placeholder="タグをスペース区切りで入力（# は不要）"
                   />
                   <div className={styles.hashtagPills}>
-                    {editedHashtags
-                      .split(/[\s,]+/)
-                      .filter(Boolean)
-                      .slice(0, 10)
-                      .map((tag, i) => (
-                        <span key={i} className={styles.pill}>
-                          #{tag.replace(/^#/, "")}
-                        </span>
-                      ))}
-                    {editedHashtags.split(/[\s,]+/).filter(Boolean).length > 10 && (
-                      <span className={styles.pillMore}>
-                        +{editedHashtags.split(/[\s,]+/).filter(Boolean).length - 10}
-                      </span>
-                    )}
+                    {editedHashtags.split(/[\s,]+/).filter(Boolean).slice(0, 10).map((tag, i) => (
+                      <span key={i} className={styles.pill}>#{tag.replace(/^#/, "")}</span>
+                    ))}
                   </div>
                 </div>
 
                 <div className={styles.actionBtns}>
-                  <button className={styles.secondaryBtn} onClick={handleReset}>
-                    やり直す
-                  </button>
+                  <button className={styles.secondaryBtn} onClick={handleReset}>やり直す</button>
                   <button className={styles.postBtn} onClick={handlePost}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
@@ -391,40 +411,24 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* STEP: 投稿中 */}
         {step === "posting" && (
           <div className={styles.loadingSection}>
             <div className={styles.loadingCard}>
               <div className={styles.loadingContent}>
-                <div className={styles.postingSpinner}>
-                  <svg width="60" height="60" viewBox="0 0 36 36" fill="none">
-                    <rect width="36" height="36" rx="10" fill="url(#grad3)" />
-                    <circle cx="18" cy="18" r="8" stroke="white" strokeWidth="2.5" fill="none" />
-                    <circle cx="25.5" cy="10.5" r="2" fill="white" />
-                    <defs>
-                      <linearGradient id="grad3" x1="0" y1="0" x2="36" y2="36">
-                        <stop offset="0%" stopColor="#f09433" />
-                        <stop offset="50%" stopColor="#dc2743" />
-                        <stop offset="100%" stopColor="#bc1888" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                </div>
+                <div className={styles.loadingSpinner} />
                 <p className={styles.loadingTitle}>Instagramに投稿中...</p>
-                <p className={styles.loadingDesc}>Meta APIと通信しています。<br />しばらくお待ちください。</p>
+                <p className={styles.loadingDesc}>Meta APIと通信しています。</p>
               </div>
             </div>
           </div>
         )}
 
-        {/* STEP: 完了 */}
         {step === "done" && result && (
           <div className={styles.doneSection}>
             <div className={styles.doneCard}>
               <div className={styles.doneIcon}>🎉</div>
               <h2 className={styles.doneTitle}>投稿完了！</h2>
               <p className={styles.doneSub}>Instagramへの投稿が成功しました</p>
-
               <div className={styles.doneInfo}>
                 <div className={styles.doneRow}>
                   <span className={styles.doneRowLabel}>投稿ID</span>
@@ -437,15 +441,7 @@ export default function DashboardPage() {
                   </a>
                 </div>
               </div>
-
-              {imagePreviewUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={imagePreviewUrl} alt="posted" className={styles.doneThumb} />
-              )}
-
-              <button className={styles.primaryBtn} onClick={handleReset}>
-                次の投稿を作成する
-              </button>
+              <button className={styles.primaryBtn} onClick={handleReset}>次の投稿を作成する</button>
             </div>
           </div>
         )}
@@ -457,19 +453,8 @@ export default function DashboardPage() {
 function StepDot({ num, label, active, done }: { num: number; label: string; active: boolean; done: boolean }) {
   return (
     <div className={`${styles.stepDot} ${active ? styles.stepActive : ""} ${done ? styles.stepDone : ""}`}>
-      <div className={styles.stepCircle}>
-        {done ? "✓" : num}
-      </div>
+      <div className={styles.stepCircle}>{done ? "✓" : num}</div>
       <span className={styles.stepLabel}>{label}</span>
-    </div>
-  );
-}
-
-function LoadingStep({ text, done, active }: { text: string; done?: boolean; active?: boolean }) {
-  return (
-    <div className={`${styles.loadingStep} ${done ? styles.loadingStepDone : ""} ${active ? styles.loadingStepActive : ""}`}>
-      <div className={styles.loadingStepDot} />
-      <span>{text}</span>
     </div>
   );
 }
