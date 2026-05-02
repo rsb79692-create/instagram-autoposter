@@ -4,19 +4,17 @@ import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(request: NextRequest) {
   try {
-    const { imageUrl, imageUrls, caption, hashtags, filePath } = await request.json();
+    const { imageUrl, caption, hashtags, filePath } = await request.json();
 
-    const targetUrls = imageUrls && imageUrls.length > 0 ? imageUrls : [imageUrl];
-
-    if (!targetUrls[0] || !caption || !hashtags) {
+    if (!imageUrl || !caption || !hashtags) {
       return NextResponse.json(
-        { error: "画像URL・caption・hashtags が必要です" },
+        { error: "imageUrl・caption・hashtags が必要です" },
         { status: 400 }
       );
     }
 
     // Instagram に投稿
-    const result = await postToInstagram(targetUrls, caption, hashtags);
+    const result = await postToInstagram(imageUrl, caption, hashtags);
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 500 });
@@ -24,7 +22,7 @@ export async function POST(request: NextRequest) {
 
     // Supabase に投稿履歴を保存
     const { error: dbError } = await supabaseAdmin.from("posts").insert({
-      image_url: targetUrls[0],
+      image_url: imageUrl,
       file_path: filePath ?? null,
       caption,
       hashtags,
