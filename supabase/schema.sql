@@ -30,6 +30,24 @@ CREATE POLICY "service_role_all" ON posts
   USING (true)
   WITH CHECK (true);
 
+-- トークンテーブル
+CREATE TABLE IF NOT EXISTS tokens (
+  id          SERIAL PRIMARY KEY,
+  service     TEXT NOT NULL UNIQUE,
+  token       TEXT NOT NULL,
+  expires_at  TIMESTAMPTZ,
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RLS for tokens
+ALTER TABLE tokens ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service_role_tokens" ON tokens
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
 -- =============================================
 -- Storage バケット設定
 -- =============================================
