@@ -27,6 +27,7 @@ export default function DashboardPage() {
   const [editedHashtags, setEditedHashtags] = useState("");
   const [result, setResult] = useState<PostResult | null>(null);
   const [error, setError] = useState("");
+  const [menuName, setMenuName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
 
@@ -80,6 +81,10 @@ export default function DashboardPage() {
 
   async function handleUploadAndGenerate() {
     if (imageFiles.length === 0) return;
+    if (!menuName.trim()) {
+      setError("メニュー名を入力してください");
+      return;
+    }
     setError("");
     setStep("generating");
 
@@ -103,7 +108,7 @@ export default function DashboardPage() {
       const generateRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: uploadedUrls[0] }),
+        body: JSON.stringify({ imageUrl: uploadedUrls[0], menuName: menuName.trim() }),
       });
       const generateData = await generateRes.json();
       if (!generateRes.ok) throw new Error(generateData.error);
@@ -159,6 +164,7 @@ export default function DashboardPage() {
     setEditedHashtags("");
     setResult(null);
     setError("");
+    setMenuName("");
     setCurrentPreviewIndex(0);
   }
 
@@ -297,6 +303,18 @@ export default function DashboardPage() {
                 if (files.length > 0) handleFilesSelect(files);
               }}
             />
+
+            <div className={styles.editSection} style={{ marginTop: "20px" }}>
+              <label className={styles.editLabel}>🍽️ メニュー名</label>
+              <input
+                type="text"
+                className={styles.editTextarea}
+                style={{ padding: "10px 12px", borderRadius: "8px", resize: "none", height: "auto" }}
+                placeholder="例：鮭の塩焼き定食、豆腐の味噌汁、ひじき煮..."
+                value={menuName}
+                onChange={(e) => setMenuName(e.target.value)}
+              />
+            </div>
 
             {imageFiles.length > 0 && (
               <button className={styles.primaryBtn} onClick={handleUploadAndGenerate}>

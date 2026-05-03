@@ -1,14 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
+
+  // ページに戻ってきたとき（bfcache）loading が固まるのを防ぐ
+  useEffect(() => {
+    const reset = () => setLoading(false);
+    window.addEventListener("pageshow", reset);
+    return () => window.removeEventListener("pageshow", reset);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -23,16 +28,17 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
-        router.push("/dashboard");
+        // hard redirect でクッキーを確実に送信、history に /login を残さない
+        window.location.replace("/dashboard");
+        return;
       } else {
         const data = await res.json();
         setError(data.error ?? "ログイン失敗");
       }
     } catch {
       setError("通信エラーが発生しました");
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }
 
   return (

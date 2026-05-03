@@ -10,42 +10,29 @@ export interface GeneratedContent {
 }
 
 export async function generateInstagramContent(
-  imageUrl: string
+  imageUrl: string,
+  menuName: string
 ): Promise<GeneratedContent> {
+  const FIXED_HASHTAGS = ["穂乃味", "給食", "介護施設", "大阪", "泉南"];
+
   const response = await openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
       {
         role: "system",
-        content: `あなたは、大阪府泉南エリアを中心に老人ホーム・介護付き住宅への給食請負を行う「株式会社 穂乃味（ほのみ）」のInstagram投稿文を作成するアシスタントです。
+        content: `あなたは「株式会社 穂乃味（ほのみ）」のInstagram担当者です。
+大阪・泉南エリアの介護施設・老人ホームへ給食を提供している会社のアカウントです。
 
-【ブランドの基本情報】
-- 会社名：株式会社 穂乃味（ほのみ）
-- キャッチコピー：〜実りある食卓を〜
-- 主な事業：老人ホーム・介護付き住宅への給食運営
-- エリア：大阪府（泉佐野・泉南・岸和田・貝塚など）
+【投稿文ルール】
+- フォロワーに話しかける、親しみやすいトーン
+- 100文字前後（改行含む）
+- 必ず「穂乃味」「大阪・泉南」を自然に含める
+- 栄養・健康へのこだわりを1文添える
+- 絵文字は1〜2個のみ（🍱😊🌿🥗🍵 などから適切なものを選ぶ）
+- 「今日の穂乃味のメニューは{メニュー名}です」という書き出しで始める
 
-【文体ルール】
-- 語尾は「です・ます」調（丁寧語）。タメ口・ため書きは使わない
-- 短い文で改行を入れ、読みやすく書く
-- 施設名・利用者は必ず「〜さま」「利用者さま」と敬称をつける
-- 感情や季節感を自然にひとこと添える（例：「食で季節を感じますね」「笑顔が見られますように」）
-- 1投稿あたりの絵文字は2〜4個にとどめ、多用しない
-
-【絵文字ルール】
-- 食事投稿の締め：🥢 または 🍽️
-- 親しみ・笑顔：😊
-- 季節（春）：🌸
-
-【ハッシュタグルール】
-- 1投稿あたり4〜6個（多すぎない）
-- 必ず含める：#穂乃味
-- 業種：#給食 または #給食委託
-- 施設種別：#介護施設 または #老人ホーム
-- 地域：#大阪 #泉南
-
-以下のJSON形式で返してください：
-{"caption": "投稿文", "hashtags": ["穂乃味", "給食", "介護施設", "大阪", "泉南"]}`,
+以下のJSON形式のみで返してください（ハッシュタグは固定値をそのまま使用）：
+{"caption": "投稿文（100文字前後）", "hashtags": ["穂乃味", "給食", "介護施設", "大阪", "泉南"]}`,
       },
       {
         role: "user",
@@ -56,12 +43,12 @@ export async function generateInstagramContent(
           },
           {
             type: "text",
-            text: "この料理の写真を見て、穂乃味らしいInstagram投稿文とハッシュタグを作成してください。",
+            text: `今日のメニュー名：「${menuName}」\nこのメニューと写真をもとに、穂乃味らしいInstagram投稿文を作成してください。`,
           },
         ],
       },
     ],
-    max_tokens: 1000,
+    max_tokens: 500,
     response_format: { type: "json_object" },
   });
 
@@ -71,6 +58,6 @@ export async function generateInstagramContent(
   const parsed = JSON.parse(content);
   return {
     caption: parsed.caption,
-    hashtags: parsed.hashtags,
+    hashtags: FIXED_HASHTAGS,
   };
 }
