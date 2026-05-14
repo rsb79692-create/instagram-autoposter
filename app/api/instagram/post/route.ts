@@ -4,25 +4,30 @@ import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(request: NextRequest) {
   try {
-    const { imageUrl, caption, hashtags, filePath } = await request.json();
+    const { imageUrl, imageUrls, caption, hashtags, filePath } = await request.json();
 
-    if (!imageUrl || !caption || !hashtags) {
+    // imageUrls（複数）優先、なければimageUrl（単体）にフォールバック
+    const urls: string[] = imageUrls?.length > 0
+      ? imageUrls
+      : imageUrl
+      ? [imageUrl]
+      : [];
+
+    if (urls.length === 0 || !caption || !hashtags) {
       return NextResponse.json(
-        { error: "imageUrl・caption・hashtags が必要です" },
+        { error: "imageUrls・caption・hashtags が必要です" },
         { status: 400 }
       );
     }
 
-    // Instagram に投稿
-    const result = await postToInstagram(imageUrl, caption, hashtags);
+    const result = await postToInstagram(urls, caption, hashtags);
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 500 });
     }
 
-    // Supabase に投稿履歴を保存
     const { error: dbError } = await supabaseAdmin.from("posts").insert({
-      image_url: imageUrl,
+      image_url: urls[0],
       file_path: filePath ?? null,
       caption,
       hashtags,
@@ -33,7 +38,6 @@ export async function POST(request: NextRequest) {
     });
 
     if (dbError) {
-      // DBエラーは投稿自体は成功しているのでログだけ出す
       console.error("DB保存失敗:", dbError.message);
     }
 

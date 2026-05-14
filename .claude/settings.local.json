@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git restore *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git filter-repo *)",
+      "Bash(python -m pip show git-filter-repo)",
+      "Bash(pip install *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(npm run *)",
+      "Bash(curl -s http://localhost:3000 -o /dev/null -w \"%{http_code}\")",
+      "Bash(curl -s -L http://localhost:3000/login -w \"\\\\nHTTP_STATUS:%{http_code}\" -o /tmp/login_resp.txt)",
+      "Read(//tmp/**)",
+      "Bash(curl *)",
+      "Read(//c/Windows/Web/Wallpaper/**)",
+      "Read(//mnt/c/Windows/Web/**)",
+      "Bash(powershell.exe *)",
+      "Bash(pkill -f \"next dev\")",
+      "PowerShell(Stop-Process *)",
+      "Bash(vercel *)",
+      "Bash(echo \"EXIT:$?\")",
+      "PowerShell(vercel logs *)"
+    ]
+  }
+}

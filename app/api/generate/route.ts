@@ -12,14 +12,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!menuName || !menuName.trim()) {
-      return NextResponse.json(
-        { error: "メニュー名を入力してください" },
-        { status: 400 }
-      );
-    }
-
-    const content = await generateInstagramContent(imageUrl, menuName.trim());
+    const content = await generateInstagramContent(imageUrl, menuName?.trim() ?? "");
 
     return NextResponse.json({ success: true, ...content });
   } catch (error) {

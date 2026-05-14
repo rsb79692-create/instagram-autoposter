@@ -43,7 +43,9 @@ export async function generateInstagramContent(
           },
           {
             type: "text",
-            text: `今日のメニュー名：「${menuName}」\nこのメニューと写真をもとに、穂乃味らしいInstagram投稿文を作成してください。`,
+            text: menuName
+              ? `今日のメニュー名：「${menuName}」\nこのメニューと写真をもとに、穂乃味らしいInstagram投稿文を作成してください。`
+              : `写真に写っている料理を見て、メニュー名を日本語で判断してください。そのメニュー名を使って「今日の穂乃味のメニューは〇〇です」という書き出しで、穂乃味らしいInstagram投稿文を作成してください。`,
           },
         ],
       },
